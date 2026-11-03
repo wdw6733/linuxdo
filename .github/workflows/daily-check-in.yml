@@ -68,3 +68,4 @@ jobs:
           repository: ${{ github.repository }}
           retain_days: 10
           keep_minimum_runs: 6
+# auto-enabled by wdw6733
