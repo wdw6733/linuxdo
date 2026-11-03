@@ -117,15 +117,34 @@ class LinuxDoBrowser:
         ]
         self.page.set.cookies(dp_cookies)
 
-        # 导航并验证登录态
-        logger.info("导航至 linux.do 验证登录态...")
+        # 导航并轮询等待过 Cloudflare 盾 + 论坛内容加载
+        logger.info("导航至 linux.do，等待过 Cloudflare 盾...")
         self.page.get(HOME_URL)
-        time.sleep(5)
-        user_ele = self.page.ele("@id=current-user")
-        if user_ele or "avatar" in self.page.html:
-            logger.info("Cookie 登录验证成功")
+        ok = False
+        for i in range(24):
+            time.sleep(5)
+            try:
+                title = self.page.title or ""
+                html = self.page.html or ""
+            except Exception as e:
+                logger.warning(f"读取页面异常: {e}")
+                continue
+            has_area = "list-area" in html
+            has_user = "current-user" in html
+            logger.info(
+                f"第 {i+1} 次检查: 标题='{title[:60]}', list-area={has_area}, current-user={has_user}"
+            )
+            if has_area or has_user or "avatar" in html:
+                ok = True
+                break
+        if ok:
+            logger.info("页面加载成功（已过盾）")
+            if "current-user" in self.page.html or "avatar" in self.page.html:
+                logger.info("Cookie 登录验证成功")
+                return True
+            logger.warning("已过盾但未检测到登录态，仍继续浏览")
             return True
-        logger.error("Cookie 登录验证失败 (未找到 current-user)")
+        logger.error("等待超时，可能被 Cloudflare 拦截")
         return False
 
     def login(self):
