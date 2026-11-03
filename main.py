@@ -54,6 +54,7 @@ if not PASSWORD:
 GOTIFY_URL = os.environ.get("GOTIFY_URL")  # Gotify 服务器地址
 GOTIFY_TOKEN = os.environ.get("GOTIFY_TOKEN")  # Gotify 应用的 API Token
 SC3_PUSH_KEY = os.environ.get("SC3_PUSH_KEY")  # Server酱³ SendKey
+LINUXDO_COOKIES = os.environ.get("LINUXDO_COOKIES", "").strip()
 
 HOME_URL = "https://linux.do/"
 LOGIN_URL = "https://linux.do/login"
@@ -92,7 +93,44 @@ class LinuxDoBrowser:
             }
         )
 
+    def _login_by_cookies(self):
+        """使用完整 Cookie 字符串登录（跳过 CSRF/密码登录，绕过 Cloudflare）"""
+        logger.info("使用 Cookie 登录...")
+        cookies_dict = {}
+        for part in LINUXDO_COOKIES.split(";"):
+            part = part.strip()
+            if "=" in part:
+                k, v = part.split("=", 1)
+                cookies_dict[k] = v
+        if not cookies_dict:
+            logger.error("LINUXDO_COOKIES 解析为空")
+            return False
+
+        # 注入 curl_cffi session
+        for k, v in cookies_dict.items():
+            self.session.cookies.set(k, v, domain="linux.do")
+
+        # 注入 DrissionPage 浏览器
+        dp_cookies = [
+            {"name": k, "value": v, "domain": ".linux.do", "path": "/"}
+            for k, v in cookies_dict.items()
+        ]
+        self.page.set.cookies(dp_cookies)
+
+        # 导航并验证登录态
+        logger.info("导航至 linux.do 验证登录态...")
+        self.page.get(HOME_URL)
+        time.sleep(5)
+        user_ele = self.page.ele("@id=current-user")
+        if user_ele or "avatar" in self.page.html:
+            logger.info("Cookie 登录验证成功")
+            return True
+        logger.error("Cookie 登录验证失败 (未找到 current-user)")
+        return False
+
     def login(self):
+        if LINUXDO_COOKIES:
+            return self._login_by_cookies()
         logger.info("开始登录")
         # Step 1: Get CSRF Token
         logger.info("获取 CSRF token...")
